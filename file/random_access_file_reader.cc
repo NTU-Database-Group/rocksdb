@@ -20,6 +20,7 @@
 #include "test_util/sync_point.h"
 #include "util/random.h"
 #include "util/rate_limiter_impl.h"
+#include <iostream>
 
 namespace ROCKSDB_NAMESPACE {
 inline Histograms GetFileReadHistograms(Statistics* stats,
@@ -144,6 +145,10 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
       size_t offset_advance = static_cast<size_t>(offset) - aligned_offset;
       size_t read_size =
           Roundup(static_cast<size_t>(offset + n), alignment) - aligned_offset;
+      std::cout << "read size: " << read_size
+        <<  ", n: " << n
+        << ", offset: " << offset
+        << std::endl;
       AlignedBuffer buf;
       buf.Alignment(alignment);
       buf.AllocateNewBuffer(read_size);

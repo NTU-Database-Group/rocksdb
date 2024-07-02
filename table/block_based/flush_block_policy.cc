@@ -16,6 +16,8 @@
 #include "table/block_based/flush_block_policy_impl.h"
 #include "table/format.h"
 
+#include <iostream>
+
 namespace ROCKSDB_NAMESPACE {
 
 // Flush block by size
@@ -47,6 +49,10 @@ class FlushBlockBySizePolicy : public FlushBlockPolicy {
     // 2) block_size_deviation is set and the estimated size after appending
     // the kv will exceed the block size and the current size is under the
     // the deviation.
+    bool flushed = curr_size >= block_size_ || BlockAlmostFull(key, value);
+    if (flushed) {
+      std::cout << "Finish a block at " << curr_size << ", block_size_deviation_limit_: " << block_size_deviation_limit_ << std::endl;
+    }
     return curr_size >= block_size_ || BlockAlmostFull(key, value);
   }
 
