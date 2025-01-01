@@ -23,6 +23,89 @@ class TablePropertiesCollectorFactory;
 class TableFactory;
 struct Options;
 
+struct CompactionOptionsFlex {
+  std::vector<int> merge_policy;
+  CompactionOptionsFlex() : merge_policy(){}
+  CompactionOptionsFlex(int _num_levels) : merge_policy(_num_levels, 5){}
+  CompactionOptionsFlex(int _num_levels, int K) : merge_policy(_num_levels, K){}
+  bool use_monkey_layout = false;
+};
+
+struct AtomicCompactionController {
+ private:
+  std::atomic<bool> val;
+  std::vector<int> range_lookup_ops;
+  std::vector<int> update_ops;
+  int window_size; // operation numbers
+  int intensity; // in us
+  void PrepareWorkload(const std::vector<int>& r, const std::vector<int>& u) {
+    range_lookup_ops = r;
+    update_ops = u;
+  }
+  void Set(bool newVal) {
+    val.store(newVal);
+  }
+ public:
+   /*
+    For Moose only
+  */
+  std::vector<double> size_ratios;
+  std::vector<uint64_t> run_numbers;
+  std::vector<uint64_t> run_sizes;
+
+  /* For DynamicCompaction */
+  int searchDepth;
+  uint64_t buffer_size;
+  int walkDepth = 20;
+  double gamma;
+
+  AtomicCompactionController(int window_size, int intensity): window_size(window_size), intensity(intensity) {
+    val.store(false);
+  }
+
+  void InitForDynamicCompaction(int searchDepth=5, uint64_t buffer_size=2UL * (1<<20), double gamma=0.8, int walk_depth=20) {
+    this->searchDepth = searchDepth;
+    this->buffer_size = buffer_size;
+    this->gamma = gamma;
+    this->walkDepth = walk_depth;
+  }
+  void InitForMoose(const std::vector<double>& size_ratios, const std::vector<uint64_t>& run_numbers, const std::vector<uint64_t>& run_sizes) {
+    this->size_ratios = size_ratios;
+    this->run_numbers = run_numbers;
+    this->run_sizes = run_sizes;
+  }
+  bool Get() const {
+    return val.load();
+  }
+  int GetWindowDuration() const {
+    return window_size * intensity; // in us
+  }
+  int GetRangeLookupOp(int timestamp) {
+    if (timestamp >= range_lookup_ops.size()) {
+      return 0;
+    }
+    return range_lookup_ops[timestamp];
+  }
+  int GetUpdateOp(int timestamp) {
+    if (timestamp >= update_ops.size()) {
+      return 0;
+    }
+    return update_ops[timestamp];
+  }
+
+  int GetWorkloadSize() {
+    return range_lookup_ops.size();
+  }
+
+  void PrepareCompaction(const std::vector<int>& r, const std::vector<int>& u) {
+    PrepareWorkload(r, u);
+    Set(true);
+  }
+  void HandleCompaction() {
+    Set(false);
+  }
+};
+
 enum CompactionStyle : char {
   // level based compaction style
   kCompactionStyleLevel = 0x0,
@@ -33,6 +116,10 @@ enum CompactionStyle : char {
   // Disable background compaction. Compaction jobs are submitted
   // via CompactFiles().
   kCompactionStyleNone = 0x3,
+
+  kCompactionStyleDynamic = 0x4,
+
+  kCompactionStyleMoose = 0x5,
 };
 
 // In Level-based compaction, it Determines which file from a level to be
@@ -1090,6 +1177,9 @@ struct AdvancedColumnFamilyOptions {
   // Dynamically changeable through the SetOptions() API.
   uint32_t bottommost_file_compaction_delay = 0;
 
+  AtomicCompactionController* comp_controller = nullptr;
+
+  CompactionOptionsFlex compaction_options_flex;
   // Create ColumnFamilyOptions with default values for all fields
   AdvancedColumnFamilyOptions();
   // Create ColumnFamilyOptions from Options

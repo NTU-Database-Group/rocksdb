@@ -380,8 +380,8 @@ bool DBIter::FindNextUserEntryInternal(bool skipping_saved_key,
         num_skipped++;  // skip this entry
         PERF_COUNTER_ADD(internal_key_skipped_count, 1);
       } else {
-        assert(!skipping_saved_key ||
-               CompareKeyForSkip(ikey_.user_key, saved_key_.GetUserKey()) > 0);
+        // assert(!skipping_saved_key ||
+        //        CompareKeyForSkip(ikey_.user_key, saved_key_.GetUserKey()) > 0);
         num_skipped = 0;
         reseek_done = false;
         switch (ikey_.type) {

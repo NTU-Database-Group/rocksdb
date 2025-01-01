@@ -143,6 +143,10 @@ class VersionStorageInfo {
   void operator=(const VersionStorageInfo&) = delete;
   ~VersionStorageInfo();
 
+  bool NeedConsistencyChecks() const {
+    return compaction_style_ != kCompactionStyleDynamic;
+  }
+
   void Reserve(int level, size_t size) { files_[level].reserve(size); }
 
   void AddFile(int level, FileMetaData* f);

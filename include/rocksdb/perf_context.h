@@ -315,5 +315,6 @@ struct PerfContext : public PerfContextBase {
 //
 // This function never returns nullptr.
 PerfContext* get_perf_context();
-
+uint32_t * get_positive();
+uint32_t * get_true_positive();
 }  // namespace ROCKSDB_NAMESPACE

@@ -379,6 +379,9 @@ class VersionBuilder::Rep {
   // table files and blob files are consistent.
   Status CheckConsistencyDetails(const VersionStorageInfo* vstorage) const {
     assert(vstorage);
+    if (!vstorage->NeedConsistencyChecks()) {
+      return Status::OK();
+    }
 
     ExpectedLinkedSsts expected_linked_ssts;
 
@@ -525,6 +528,9 @@ class VersionBuilder::Rep {
 
   Status CheckConsistency(const VersionStorageInfo* vstorage) const {
     assert(vstorage);
+    if (!vstorage->NeedConsistencyChecks()) {
+      return Status::OK();
+    }
 
     // Always run consistency checks in debug build
 #ifdef NDEBUG

@@ -146,8 +146,9 @@ class FilePicker {
   FilePicker(const Slice& user_key, const Slice& ikey,
              autovector<LevelFilesBrief>* file_levels, unsigned int num_levels,
              FileIndexer* file_indexer, const Comparator* user_comparator,
-             const InternalKeyComparator* internal_comparator)
-      : num_levels_(num_levels),
+             const InternalKeyComparator* internal_comparator, bool search_all_files=false)
+      : search_all_files_(search_all_files),
+        num_levels_(num_levels),
         curr_level_(static_cast<unsigned int>(-1)),
         returned_file_level_(static_cast<unsigned int>(-1)),
         hit_file_level_(static_cast<unsigned int>(-1)),
@@ -160,7 +161,7 @@ class FilePicker {
         ikey_(ikey),
         file_indexer_(file_indexer),
         user_comparator_(user_comparator),
-        internal_comparator_(internal_comparator) {
+        internal_comparator_(internal_comparator){
     // Setup member variables to search first level.
     search_ended_ = !PrepareNextLevel();
     if (!search_ended_) {
@@ -194,7 +195,7 @@ class FilePicker {
         // is highly tuned to minimize number of tables queried by each query,
         // so it is unlikely that key range filtering is more efficient than
         // querying the files.
-        if (num_levels_ > 1 || curr_file_level_->num_files > 3) {
+        if (!search_all_files_ && (num_levels_ > 1 || curr_file_level_->num_files > 3)) {
           // Check if key is within a file's range. If search left bound and
           // right bound point to the same find, we are sure key falls in
           // range.
@@ -219,6 +220,10 @@ class FilePicker {
           }
           // Key falls out of current file's range
           if (cmp_smallest < 0 || cmp_largest > 0) {
+            if (search_all_files_) {
+              ++curr_index_in_curr_level_;
+              continue;
+            }
             if (curr_level_ == 0) {
               ++curr_index_in_curr_level_;
               continue;
@@ -254,6 +259,7 @@ class FilePicker {
   bool IsHitFileLastInLevel() { return is_hit_file_last_in_level_; }
 
  private:
+  bool search_all_files_;
   unsigned int num_levels_;
   unsigned int curr_level_;
   unsigned int returned_file_level_;
@@ -299,7 +305,7 @@ class FilePicker {
       // any level. Otherwise, it only occurs at Level-0 (since Put/Deletes
       // are always compacted into a single entry).
       int32_t start_index;
-      if (curr_level_ == 0) {
+      if (curr_level_ == 0 || search_all_files_) {
         // On Level-0, we read through all files to check for overlap.
         start_index = 0;
       } else {
@@ -2027,18 +2033,18 @@ void Version::AddIteratorsForLevel(const ReadOptions& read_options,
   bool should_sample = should_sample_file_read();
 
   auto* arena = merge_iter_builder->GetArena();
-  if (level == 0) {
+  if (level == 0 || !storage_info_.NeedConsistencyChecks()) {
     // Merge all level zero files together since they may overlap
     std::unique_ptr<TruncatedRangeDelIterator> tombstone_iter = nullptr;
-    for (size_t i = 0; i < storage_info_.LevelFilesBrief(0).num_files; i++) {
-      const auto& file = storage_info_.LevelFilesBrief(0).files[i];
+    for (size_t i = 0; i < storage_info_.LevelFilesBrief(level).num_files; i++) {
+      const auto& file = storage_info_.LevelFilesBrief(level).files[i];
       auto table_iter = cfd_->table_cache()->NewIterator(
           read_options, soptions, cfd_->internal_comparator(),
           *file.file_metadata, /*range_del_agg=*/nullptr,
           mutable_cf_options_.prefix_extractor, nullptr,
-          cfd_->internal_stats()->GetFileReadHist(0),
+          cfd_->internal_stats()->GetFileReadHist(level),
           TableReaderCaller::kUserIterator, arena,
-          /*skip_filters=*/false, /*level=*/0, max_file_size_for_l0_meta_pin_,
+          /*skip_filters=*/false, /*level=*/level, max_file_size_for_l0_meta_pin_,
           /*smallest_compaction_key=*/nullptr,
           /*largest_compaction_key=*/nullptr, allow_unprepared_value,
           mutable_cf_options_.block_protection_bytes_per_key,
@@ -2055,7 +2061,7 @@ void Version::AddIteratorsForLevel(const ReadOptions& read_options,
       // rather than Seek(), while files in other levels are recored per seek.
       // If users execute one range query per iterator, there may be some
       // discrepancy here.
-      for (FileMetaData* meta : storage_info_.LevelFiles(0)) {
+      for (FileMetaData* meta : storage_info_.LevelFiles(level)) {
         sample_file_read_inc(meta);
       }
     }
@@ -2428,7 +2434,7 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
   FilePicker fp(user_key, ikey, &storage_info_.level_files_brief_,
                 storage_info_.num_non_empty_levels_,
                 &storage_info_.file_indexer_, user_comparator(),
-                internal_comparator());
+                internal_comparator(), storage_info_.NeedConsistencyChecks());
   FdWithKeyRange* f = fp.GetNextFile();
 
   while (f != nullptr) {
@@ -7069,9 +7075,20 @@ InternalIterator* VersionSet::MakeInputIterator(
   // Level-0 files have to be merged together.  For other levels,
   // we will make a concatenating iterator per level.
   // TODO(opt): use concatenating iterator for level-0 if there is no overlap
-  const size_t space = (c->level() == 0 ? c->input_levels(0)->num_files +
+  size_t space = 0;
+  bool need_consistency_check = c->immutable_options()->compaction_style != kCompactionStyleDynamic;
+  if (need_consistency_check) {
+    space = (c->level() == 0 ? c->input_levels(0)->num_files +
                                               c->num_input_levels() - 1
                                         : c->num_input_levels());
+  } else {
+    // Compaction iterator
+    // 1. if only files at the same level involved, we only needs #num_files iterators
+    // 2. if files at two levels (at most) involved, we needs the sum of the numbers iterators
+    space = c->num_input_levels() == 1
+                ? c->input_levels(0)->num_files
+                : c->input_levels(0)->num_files + c->input_levels(1)->num_files;
+  }
   InternalIterator** list = new InternalIterator*[space];
   // First item in the pair is a pointer to range tombstones.
   // Second item is a pointer to a member of a LevelIterator,
@@ -7084,7 +7101,7 @@ InternalIterator* VersionSet::MakeInputIterator(
   size_t num = 0;
   for (size_t which = 0; which < c->num_input_levels(); which++) {
     if (c->input_levels(which)->num_files != 0) {
-      if (c->level(which) == 0) {
+      if (c->level(which) == 0 || !need_consistency_check) {
         const LevelFilesBrief* flevel = c->input_levels(which);
         for (size_t i = 0; i < flevel->num_files; i++) {
           const FileMetaData& fmd = *flevel->files[i].file_metadata;

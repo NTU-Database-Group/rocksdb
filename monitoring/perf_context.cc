@@ -170,6 +170,16 @@ PerfContext perf_context;
 thread_local PerfContext perf_context;
 #endif
 
+thread_local uint32_t bloom_filter_positive_counter[100];
+thread_local uint32_t bloom_filter_true_positive_counter[100];
+
+uint32_t * get_positive(){
+  return bloom_filter_positive_counter;
+}
+uint32_t * get_true_positive(){
+  return bloom_filter_true_positive_counter;
+}
+
 PerfContext* get_perf_context() {
   static_assert(sizeof(PerfContextBase) == sizeof(PerfContextInt));
   static_assert(sizeof(PerfContextByLevelBase) ==

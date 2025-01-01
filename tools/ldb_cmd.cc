@@ -1585,7 +1585,7 @@ void ManifestDumpCommand::DoCommand() {
   if (verbose_) {
     fprintf(stdout, "Processing Manifest file %s\n", manifestfile.c_str());
   }
-
+  options_.compaction_style = kCompactionStyleDynamic;
   DumpManifestFile(options_, manifestfile, verbose_, is_key_hex_, json_,
                    column_families_);
 

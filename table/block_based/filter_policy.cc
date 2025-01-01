@@ -1760,6 +1760,8 @@ FilterBitsBuilder* RibbonFilterPolicy::GetBuilderWithContext(
   int bloom_before_level = bloom_before_level_.load(std::memory_order_relaxed);
   if (bloom_before_level < INT_MAX) {
     switch (context.compaction_style) {
+      case kCompactionStyleMoose:
+      case kCompactionStyleDynamic:
       case kCompactionStyleLevel:
       case kCompactionStyleUniversal: {
         if (context.reason == TableFileCreationReason::kFlush) {

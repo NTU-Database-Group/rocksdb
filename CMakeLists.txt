@@ -678,6 +678,8 @@ set(SOURCES
         db/compaction/compaction_iterator.cc
         db/compaction/compaction_picker.cc
         db/compaction/compaction_job.cc
+        db/compaction/compaction_picker_dynamic.cc
+        db/compaction/compaction_picker_moose.cc
         db/compaction/compaction_picker_fifo.cc
         db/compaction/compaction_picker_level.cc
         db/compaction/compaction_picker_universal.cc
@@ -864,6 +866,7 @@ set(SOURCES
         tools/ldb_tool.cc
         tools/sst_dump_tool.cc
         tools/trace_analyzer_tool.cc
+        tools/ruskey/db.cc
         trace_replay/block_cache_tracer.cc
         trace_replay/io_tracer.cc
         trace_replay/trace_record_handler.cc

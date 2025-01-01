@@ -17,6 +17,8 @@ extern thread_local PerfContext perf_context_;
 #define perf_context (*get_perf_context())
 #else
 extern thread_local PerfContext perf_context;
+extern thread_local uint32_t bloom_filter_positive_counter[100];
+extern thread_local uint32_t bloom_filter_true_positive_counter[100];
 #endif
 #endif
 
